@@ -119,7 +119,7 @@ if rg -q 'skins/' "$ROOT/config/broot/conf.hjson"; then
   fail "public broot configuration references untracked skin files"
 fi
 
-HOME="$test_home" TERM=dumb zsh -ic 'exit' >"$TEMP_ROOT/zsh-dumb.out" 2>&1 || fail "portable Zsh startup failed with TERM=dumb"
+HOME="$test_home" ZDOTDIR="$test_home" TERM=dumb zsh -ic 'exit 0' >"$TEMP_ROOT/zsh-dumb.out" 2>&1 || fail "portable Zsh startup failed with TERM=dumb"
 
 fake_omarchy_bin="$TEMP_ROOT/fake-omarchy-bin"
 mkdir -p -- "$fake_omarchy_bin"

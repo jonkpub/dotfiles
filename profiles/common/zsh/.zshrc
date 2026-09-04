@@ -5,7 +5,9 @@
 
 autoload -Uz compinit
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
-if [[ -d "$CACHE_DIR" || ( ! -e "$CACHE_DIR" && mkdir -p -- "$CACHE_DIR" 2>/dev/null ) ]]; then
+if [[ -d "$CACHE_DIR" ]]; then
+  compinit -d "$CACHE_DIR/zcompdump"
+elif [[ ! -e "$CACHE_DIR" ]] && mkdir -p -- "$CACHE_DIR" 2>/dev/null; then
   compinit -d "$CACHE_DIR/zcompdump"
 else
   compinit -C
