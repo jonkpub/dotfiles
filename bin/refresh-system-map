@@ -222,11 +222,13 @@ else
 fi
 if [[ "$(uname -s)" == "Darwin" ]]; then
   exchange_root="$HOME/Library/Mobile Documents/com~apple~CloudDocs/Agent Exchange"
-  if [[ -d "$exchange_root" ]] || /usr/bin/osascript <<'APPLESCRIPT' 2>/dev/null | grep -Fxq true
+  if [[ -d "$exchange_root" ]] || /usr/bin/osascript - "${exchange_root:h}" <<'APPLESCRIPT' 2>/dev/null | grep -Fxq true
+on run argv
 tell application "Finder"
-  set cloudRoot to POSIX file "/Users/vorposa/Library/Mobile Documents/com~apple~CloudDocs" as alias
+  set cloudRoot to POSIX file (item 1 of argv) as alias
   return (exists folder "Agent Exchange" of cloudRoot) as text
 end tell
+end run
 APPLESCRIPT
   then
     exchange_status="Available at the configured iCloud Agent Exchange folder."

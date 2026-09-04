@@ -9,23 +9,23 @@ to scan personal iCloud contents.
 
 On macOS, the intended user-visible folder is:
 
-`BT`text
+```text
 iCloud Drive/Agent Exchange/
 ├── Inbox/
 ├── Outbox/
 ├── Manifests/
 └── README.md
-`BT`
+```
 
 On Linux, the local staging root is private machine state:
 
-`BT`text
+```text
 ~/.local/share/workstation/agent-exchange/
 ├── inbox/
 ├── outbox/
 ├── manifests/
 └── README.md
-`BT`
+```
 
 The Linux root is not an iCloud mount and must not claim to be synchronized.
 A future private file service may bridge declared Exchange items after explicit

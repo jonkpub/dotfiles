@@ -45,11 +45,13 @@ fi
 
 icloud_visible_in_finder() {
   [[ "$KIND" == icloud ]] || return 1
-  /usr/bin/osascript <<'APPLESCRIPT' 2>/dev/null | grep -Fxq true
+  /usr/bin/osascript - "$PARENT" <<'APPLESCRIPT' 2>/dev/null | grep -Fxq true
+on run argv
 tell application "Finder"
-  set cloudRoot to POSIX file "/Users/vorposa/Library/Mobile Documents/com~apple~CloudDocs" as alias
+  set cloudRoot to POSIX file (item 1 of argv) as alias
   return (exists folder "Agent Exchange" of cloudRoot) as text
 end tell
+end run
 APPLESCRIPT
 }
 
@@ -88,9 +90,10 @@ if [[ "$state" == permission-needed ]]; then
 fi
 
 if [[ "$state" == missing && "$KIND" == icloud ]]; then
-  /usr/bin/osascript <<'APPLESCRIPT'
+  /usr/bin/osascript - "$PARENT" <<'APPLESCRIPT'
+on run argv
 tell application "Finder"
-  set cloudRoot to POSIX file "/Users/vorposa/Library/Mobile Documents/com~apple~CloudDocs" as alias
+  set cloudRoot to POSIX file (item 1 of argv) as alias
   if not (exists folder "Agent Exchange" of cloudRoot) then
     set exchangeRoot to make new folder at cloudRoot with properties {name:"Agent Exchange"}
   else
@@ -100,6 +103,7 @@ tell application "Finder"
     if not (exists folder folderName of exchangeRoot) then make new folder at exchangeRoot with properties {name:folderName}
   end repeat
 end tell
+end run
 APPLESCRIPT
   print -- "CREATE  $ROOT (via Finder)"
 elif [[ "$state" == missing ]]; then
