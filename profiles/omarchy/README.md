@@ -23,5 +23,10 @@ The bootstrap implementation requires the `zsh` executable, listed in
 user shell configuration. Package installation remains a deliberate, separate
 step from the core linker.
 
+Omarchy retains its stock Starship configuration from
+`/usr/share/omarchy/config/starship.toml`. The portable core intentionally does
+not link `~/.config/starship.toml` on this profile, so Omarchy visual updates
+remain platform-managed.
+
 Machine-local desktop changes belong outside the public projection. Track only
 portable, intentional overrides after reviewing them on the Omarchy machine.

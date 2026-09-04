@@ -53,7 +53,7 @@ in this public repository.
 | --- | --- | --- | --- |
 | `darwin` | Shared Zsh entrypoints | [`profiles/darwin/Brewfile`](profiles/darwin/Brewfile) | Personal applications and machine paths stay local. |
 | `linux` | Shared Zsh entrypoints | [`profiles/linux/packages.txt`](profiles/linux/packages.txt) | Generic Linux only; distribution installation stays explicit. |
-| `omarchy` | Managed Bash workflow fragment; existing Omarchy Bash entrypoint remains user-owned | [`profiles/omarchy/packages.txt`](profiles/omarchy/packages.txt) | Omarchy-owned `/usr/share/omarchy` and desktop configuration remain untouched. |
+| `omarchy` | Managed Bash workflow fragment; existing Omarchy Bash entrypoint remains user-owned | [`profiles/omarchy/packages.txt`](profiles/omarchy/packages.txt) | Omarchy-owned `/usr/share/omarchy` and desktop configuration remain untouched, including stock Starship. |
 
 The installer detects the current platform and refuses a forced profile that
 does not match it. Omarchy remains Bash-first by default; this repo never

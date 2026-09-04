@@ -132,7 +132,6 @@ SOURCE_PATHS=(
   "$DOTFILES_DIR/AGENTS.md"
   "$DOTFILES_DIR/profiles/common/git/.gitconfig"
   "$DOTFILES_DIR/profiles/common/tmux/.tmux.conf"
-  "$DOTFILES_DIR/config/starship.toml"
   "$DOTFILES_DIR/config/atuin/config.toml"
   "$DOTFILES_DIR/config/broot/conf.hjson"
   "$DOTFILES_DIR/config/broot/verbs.hjson"
@@ -141,7 +140,6 @@ TARGET_PATHS=(
   "$HOME/AGENTS.md"
   "$HOME/.config/dotfiles/git/portable.gitconfig"
   "$HOME/.tmux.conf"
-  "$HOME/.config/starship.toml"
   "$HOME/.config/atuin/config.toml"
   "$HOME/.config/broot/conf.hjson"
   "$HOME/.config/broot/verbs.hjson"
@@ -150,7 +148,6 @@ LABELS=(
   "provider-neutral agent context"
   "portable Git configuration fragment"
   "tmux configuration"
-  "Starship configuration"
   "Atuin configuration"
   "broot configuration"
   "broot verbs"
@@ -163,6 +160,7 @@ case "$PROFILE" in
       "$DOTFILES_DIR/profiles/common/zsh/.zprofile"
       "$DOTFILES_DIR/profiles/common/zsh/.profile"
       "$DOTFILES_DIR/profiles/common/zsh/.zshrc"
+      "$DOTFILES_DIR/config/starship.toml"
       "${SOURCE_PATHS[@]}"
     )
     TARGET_PATHS=(
@@ -170,6 +168,7 @@ case "$PROFILE" in
       "$HOME/.zprofile"
       "$HOME/.profile"
       "$HOME/.zshrc"
+      "$HOME/.config/starship.toml"
       "${TARGET_PATHS[@]}"
     )
     LABELS=(
@@ -177,6 +176,7 @@ case "$PROFILE" in
       "portable zsh login environment"
       "portable POSIX login environment"
       "portable interactive zsh"
+      "Starship configuration"
       "${LABELS[@]}"
     )
     ;;
