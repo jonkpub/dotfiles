@@ -1,0 +1,124 @@
+#!/bin/zsh
+
+# Initialize only the declared Agent Exchange roots. This helper never moves,
+# uploads, indexes, or synchronizes user data.
+
+emulate -LR zsh
+setopt errexit nounset pipefail
+
+PROGRAM="$0:t"
+MODE="check"
+
+usage() {
+  cat <<EOF
+Usage: $PROGRAM [--check | --json | --apply | --help]
+
+Initialize the current machine's empty Agent Exchange root. It never copies,
+moves, deletes, scans, or synchronizes user files.
+EOF
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+    --check) MODE=check ;;
+    --json) MODE=json ;;
+    --apply) MODE=apply ;;
+    --help|-h) usage; exit 0 ;;
+    *) print -u2 -- "$PROGRAM: unknown option: $1"; exit 2 ;;
+  esac
+  shift
+done
+
+[[ -n "$HOME" && "$HOME" == /* && "$HOME" != / && -d "$HOME" ]] || {
+  print -u2 -- "$PROGRAM: HOME must be an existing non-root absolute directory"; exit 1
+}
+
+if [[ "$(uname -s)" == Darwin ]]; then
+  KIND=icloud
+  ROOT="$HOME/Library/Mobile Documents/com~apple~CloudDocs/Agent Exchange"
+  PARENT="$ROOT:h"
+else
+  KIND=staging
+  ROOT="$HOME/.local/share/workstation/agent-exchange"
+  PARENT="$ROOT:h"
+fi
+
+icloud_visible_in_finder() {
+  [[ "$KIND" == icloud ]] || return 1
+  /usr/bin/osascript <<'APPLESCRIPT' 2>/dev/null | grep -Fxq true
+tell application "Finder"
+  set cloudRoot to POSIX file "/Users/vorposa/Library/Mobile Documents/com~apple~CloudDocs" as alias
+  return (exists folder "Agent Exchange" of cloudRoot) as text
+end tell
+APPLESCRIPT
+}
+
+state=missing
+([[ -d "$ROOT" ]] || icloud_visible_in_finder) && state=ready
+[[ "$state" == missing && -d "$PARENT" && ! -w "$PARENT" ]] && state=permission-needed
+
+emit_json() {
+  print -- '{'
+  print -- "  %BT%kind%BT%: %BT%$KIND%BT%,"
+  print -- "  %BT%root%BT%: %BT%$ROOT%BT%,"
+  print -- "  %BT%state%BT%: %BT%$state%BT%,"
+  print -- "  %BT%synchronized%BT%: false"
+  print -- '}'
+}
+
+if [[ "$MODE" == json ]]; then
+  emit_json | sed 's/%BT%/\"/g'
+  exit 0
+fi
+
+print -- "mode: $MODE"
+print -- "exchange kind: $KIND"
+print -- "exchange root: $ROOT"
+print -- "state: $state"
+
+if [[ "$MODE" == check ]]; then
+  [[ "$state" == ready ]] && print -- 'Exchange root is available; no files were changed.' || print -- 'Check complete; no files were changed.'
+  exit 0
+fi
+
+if [[ "$state" == permission-needed ]]; then
+  print -u2 -- "$PROGRAM: parent exists but is not writable: $PARENT"
+  print -u2 -- 'Use the platform file UI to grant access or create the visible iCloud folder; do not bypass the permission boundary.'
+  exit 1
+fi
+
+if [[ "$state" == missing && "$KIND" == icloud ]]; then
+  /usr/bin/osascript <<'APPLESCRIPT'
+tell application "Finder"
+  set cloudRoot to POSIX file "/Users/vorposa/Library/Mobile Documents/com~apple~CloudDocs" as alias
+  if not (exists folder "Agent Exchange" of cloudRoot) then
+    set exchangeRoot to make new folder at cloudRoot with properties {name:"Agent Exchange"}
+  else
+    set exchangeRoot to folder "Agent Exchange" of cloudRoot
+  end if
+  repeat with folderName in {"Inbox", "Outbox", "Manifests"}
+    if not (exists folder folderName of exchangeRoot) then make new folder at exchangeRoot with properties {name:folderName}
+  end repeat
+end tell
+APPLESCRIPT
+  print -- "CREATE  $ROOT (via Finder)"
+elif [[ "$state" == missing ]]; then
+  mkdir -p -- "$ROOT"
+  chmod 700 "$ROOT"
+  for child in Inbox Outbox Manifests; do
+    mkdir -- "$ROOT/$child"
+    chmod 700 "$ROOT/$child"
+  done
+  {
+    print -- '# Agent Exchange'
+    print
+    print -- 'Deliberate hand-off area only. This directory is not a sync engine or a canonical project root.'
+    print -- 'Never add credentials, private keys, provider configuration, or unreviewed personal files.'
+  } >"$ROOT/README.md"
+  chmod 600 "$ROOT/README.md"
+  print -- "CREATE  $ROOT"
+else
+  print -- "KEEP    $ROOT"
+fi
+
+print -- 'Exchange initialization complete. No user content was moved or synchronized.'
