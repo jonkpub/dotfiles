@@ -1,0 +1,427 @@
+#!/bin/zsh
+
+# Conservative, provider-neutral dotfiles bootstrap.
+#
+# This installer intentionally manages only directly tracked, portable config
+# links. It never invokes the legacy installer or installs optional agents,
+# provider routers, credentials, network configuration, or background services.
+#
+# It defaults to a dry run. Pass --apply only after reviewing the printed plan.
+
+emulate -LR zsh
+setopt errexit nounset pipefail
+
+PROGRAM="${0:t}"
+MODE="dry-run"
+PROFILE_REQUEST="auto"
+typeset -i MODE_OPTION_COUNT=0 PROFILE_OPTION_COUNT=0
+
+usage() {
+  cat <<EOF
+Usage: ${PROGRAM} [--dry-run | --apply] [--profile auto|darwin|linux|omarchy] [--help]
+
+Safely installs the provider-neutral dotfiles core. The default is --dry-run.
+
+  --dry-run  Print the complete plan without changing anything (default).
+  --apply    Create only missing, or already-owned, symlinks after validation.
+  --profile  Select a portable profile; auto detects Darwin, Omarchy, or Linux.
+  --help     Show this help text.
+
+The bootstrap refuses to replace ordinary files, directories, or symlinks that
+do not point at its exact tracked source. It installs the selected profile's
+shell entrypoint, never invokes install.sh, and never installs provider,
+cloud, SSH, Tailnet, credential, router, desktop, or background-service
+configuration.
+EOF
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+    --dry-run)
+      (( MODE_OPTION_COUNT += 1 ))
+      (( MODE_OPTION_COUNT == 1 )) || { print -u2 -- "${PROGRAM}: choose only one of --dry-run or --apply"; exit 2; }
+      MODE="dry-run"
+      ;;
+    --apply)
+      (( MODE_OPTION_COUNT += 1 ))
+      (( MODE_OPTION_COUNT == 1 )) || { print -u2 -- "${PROGRAM}: choose only one of --dry-run or --apply"; exit 2; }
+      MODE="apply"
+      ;;
+    --profile)
+      (( $# >= 2 )) || { print -u2 -- "${PROGRAM}: --profile needs a value"; exit 2; }
+      (( PROFILE_OPTION_COUNT += 1 ))
+      (( PROFILE_OPTION_COUNT == 1 )) || { print -u2 -- "${PROGRAM}: --profile may be specified once"; exit 2; }
+      PROFILE_REQUEST="$2"
+      shift
+      ;;
+    --help|-h) usage; exit 0 ;;
+    *)
+      print -u2 -- "${PROGRAM}: unknown option: $1"
+      usage >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+if [[ -z "${HOME:-}" || "$HOME" != /* || "$HOME" == "/" || ! -d "$HOME" || "$HOME" != "${HOME:A}" ]]; then
+  print -u2 -- "${PROGRAM}: HOME must be an existing, absolute, canonical, non-root directory"
+  exit 1
+fi
+
+if [[ -n "${DOTFILES_SOURCE_DIR:-}" ]]; then
+  if [[ "$DOTFILES_SOURCE_DIR" != /* ]]; then
+    print -u2 -- "${PROGRAM}: DOTFILES_SOURCE_DIR must be an absolute path"
+    exit 1
+  fi
+  DOTFILES_DIR="${DOTFILES_SOURCE_DIR:A}"
+else
+  DOTFILES_DIR="${0:A:h:h}"
+fi
+
+if [[ ! -d "$DOTFILES_DIR" || ! -f "$DOTFILES_DIR/AGENTS.md" ]]; then
+  print -u2 -- "${PROGRAM}: not a usable dotfiles source: $DOTFILES_DIR"
+  exit 1
+fi
+
+GIT_BIN="$(command -v git || true)"
+if [[ -z "$GIT_BIN" ]] || [[ "$("$GIT_BIN" -C "$DOTFILES_DIR" rev-parse --is-inside-work-tree 2>/dev/null || true)" != "true" ]]; then
+  print -u2 -- "${PROGRAM}: dotfiles source is not a Git worktree: $DOTFILES_DIR"
+  exit 1
+fi
+WORKTREE_ROOT="$("$GIT_BIN" -C "$DOTFILES_DIR" rev-parse --show-toplevel 2>/dev/null)"
+WORKTREE_ROOT="${WORKTREE_ROOT:A}"
+if [[ "$DOTFILES_DIR" != "$WORKTREE_ROOT" ]]; then
+  print -u2 -- "${PROGRAM}: dotfiles source must be the Git worktree root: $DOTFILES_DIR"
+  exit 1
+fi
+
+detect_profile() {
+  case "$(uname -s)" in
+    Darwin) print -- darwin ;;
+    Linux)
+      if command -v omarchy >/dev/null 2>&1 || [[ -d /usr/share/omarchy ]]; then
+        print -- omarchy
+      else
+        print -- linux
+      fi
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+if ! DETECTED_PROFILE="$(detect_profile)"; then
+  print -u2 -- "${PROGRAM}: unsupported operating system: $(uname -s)"
+  exit 1
+fi
+
+case "$PROFILE_REQUEST" in
+  auto) PROFILE="$DETECTED_PROFILE" ;;
+  darwin|linux|omarchy)
+    PROFILE="$PROFILE_REQUEST"
+    if [[ "$PROFILE" != "$DETECTED_PROFILE" ]]; then
+      print -u2 -- "${PROGRAM}: requested profile $PROFILE does not match this workstation ($DETECTED_PROFILE)"
+      exit 1
+    fi
+    ;;
+  *) print -u2 -- "${PROGRAM}: unsupported profile: $PROFILE_REQUEST"; exit 2 ;;
+esac
+
+typeset -a SOURCE_PATHS TARGET_PATHS LABELS
+SOURCE_PATHS=(
+  "$DOTFILES_DIR/AGENTS.md"
+  "$DOTFILES_DIR/profiles/common/git/.gitconfig"
+  "$DOTFILES_DIR/profiles/common/tmux/.tmux.conf"
+  "$DOTFILES_DIR/config/starship.toml"
+  "$DOTFILES_DIR/config/atuin/config.toml"
+  "$DOTFILES_DIR/config/broot/conf.hjson"
+  "$DOTFILES_DIR/config/broot/verbs.hjson"
+)
+TARGET_PATHS=(
+  "$HOME/AGENTS.md"
+  "$HOME/.config/dotfiles/git/portable.gitconfig"
+  "$HOME/.tmux.conf"
+  "$HOME/.config/starship.toml"
+  "$HOME/.config/atuin/config.toml"
+  "$HOME/.config/broot/conf.hjson"
+  "$HOME/.config/broot/verbs.hjson"
+)
+LABELS=(
+  "provider-neutral agent context"
+  "portable Git configuration fragment"
+  "tmux configuration"
+  "Starship configuration"
+  "Atuin configuration"
+  "broot configuration"
+  "broot verbs"
+)
+
+case "$PROFILE" in
+  darwin|linux)
+    SOURCE_PATHS=(
+      "$DOTFILES_DIR/profiles/common/zsh/.zshenv"
+      "$DOTFILES_DIR/profiles/common/zsh/.zprofile"
+      "$DOTFILES_DIR/profiles/common/zsh/.profile"
+      "$DOTFILES_DIR/profiles/common/zsh/.zshrc"
+      "${SOURCE_PATHS[@]}"
+    )
+    TARGET_PATHS=(
+      "$HOME/.zshenv"
+      "$HOME/.zprofile"
+      "$HOME/.profile"
+      "$HOME/.zshrc"
+      "${TARGET_PATHS[@]}"
+    )
+    LABELS=(
+      "portable zsh environment"
+      "portable zsh login environment"
+      "portable POSIX login environment"
+      "portable interactive zsh"
+      "${LABELS[@]}"
+    )
+    ;;
+  omarchy)
+    SOURCE_PATHS=("$DOTFILES_DIR/profiles/common/bash/workflow.bash" "${SOURCE_PATHS[@]}")
+    TARGET_PATHS=("$HOME/.local/share/dotfiles/bash/workflow.bash" "${TARGET_PATHS[@]}")
+    LABELS=("Omarchy Bash workflow fragment" "${LABELS[@]}")
+    ;;
+esac
+
+case "$PROFILE" in
+  darwin) PROFILE_MANIFEST="$DOTFILES_DIR/profiles/darwin/Brewfile" ;;
+  linux) PROFILE_MANIFEST="$DOTFILES_DIR/profiles/linux/packages.txt" ;;
+  omarchy) PROFILE_MANIFEST="$DOTFILES_DIR/profiles/omarchy/packages.txt" ;;
+esac
+
+if (( ${#SOURCE_PATHS} != ${#TARGET_PATHS} || ${#SOURCE_PATHS} != ${#LABELS} )); then
+  print -u2 -- "${PROGRAM}: internal manifest mismatch"
+  exit 1
+fi
+
+for source in "${SOURCE_PATHS[@]}"; do
+  relative_source="${source#$DOTFILES_DIR/}"
+  if [[ "$relative_source" == "$source" || ! -f "$source" || -L "$source" ]] || ! "$GIT_BIN" -C "$DOTFILES_DIR" ls-files --error-unmatch -- "$relative_source" >/dev/null 2>&1; then
+    print -u2 -- "${PROGRAM}: source must be a regular tracked file in this worktree: $source"
+    exit 1
+  fi
+done
+profile_relative="${PROFILE_MANIFEST#$DOTFILES_DIR/}"
+if [[ "$profile_relative" == "$PROFILE_MANIFEST" || ! -f "$PROFILE_MANIFEST" || -L "$PROFILE_MANIFEST" ]] || ! "$GIT_BIN" -C "$DOTFILES_DIR" ls-files --error-unmatch -- "$profile_relative" >/dev/null 2>&1; then
+  print -u2 -- "${PROGRAM}: profile package reference must be a regular tracked file in this worktree: $PROFILE_MANIFEST"
+  exit 1
+fi
+
+link_is_owned() {
+  local target="$1"
+  local source="$2"
+  [[ -L "$target" && "${target:A}" == "${source:A}" ]]
+}
+
+parent_chain_is_usable() {
+  local directory="$1" component path="$HOME"
+  [[ "$directory" == "$HOME" || "$directory" == "$HOME"/* ]] || return 1
+  local relative="${directory#$HOME/}"
+  [[ "$directory" == "$HOME" ]] && return 0
+  for component in ${(s:/:)relative}; do
+    path="$path/$component"
+    if [[ -e "$path" || -L "$path" ]]; then
+      [[ -d "$path" && ! -L "$path" ]] || return 1
+    fi
+  done
+}
+
+target_is_safe_or_owned() {
+  local target="$1" source="$2" parent="${target:h}"
+  parent_chain_is_usable "$parent" || return 1
+  if [[ -e "$target" || -L "$target" ]]; then
+    link_is_owned "$target" "$source" || return 1
+  fi
+}
+
+typeset -a DIRECTORIES_TO_CREATE
+typeset -i conflict_count=0
+GIT_WRAPPER="$HOME/.gitconfig"
+GIT_WRAPPER_MARKER='# managed-by: dotfiles-git-wrapper-v1'
+GIT_WRAPPER_STATE=""
+
+git_wrapper_is_owned() {
+  local first_line
+  [[ -f "$GIT_WRAPPER" && ! -L "$GIT_WRAPPER" ]] || return 1
+  IFS= read -r first_line < "$GIT_WRAPPER" || return 1
+  [[ "$first_line" == "$GIT_WRAPPER_MARKER" ]]
+}
+
+print -- "mode: $MODE"
+print -- "dotfiles source: $DOTFILES_DIR"
+print -- "selected profile: $PROFILE"
+print -- "package reference: ${PROFILE_MANIFEST#$DOTFILES_DIR/} (not installed by this command)"
+print -- ""
+print -- "Core scope: agent context, shell, Git, tmux, and portable tool configuration."
+print -- "Excluded: install.sh, provider routing, credentials, SSH, Tailnet, cloud, desktop configuration, background services, and experimental tools."
+print -- ""
+
+for index in {1..${#TARGET_PATHS}}; do
+  source="${SOURCE_PATHS[index]}"
+  target="${TARGET_PATHS[index]}"
+  label="${LABELS[index]}"
+  parent="${target:h}"
+
+  if ! parent_chain_is_usable "$parent"; then
+    print -u2 -- "CONFLICT [$label]: parent path is not a directory: $parent"
+    (( conflict_count += 1 ))
+  elif [[ -e "$target" || -L "$target" ]]; then
+    if link_is_owned "$target" "$source"; then
+      print -- "KEEP    [$label] $target -> $source"
+    else
+      print -u2 -- "CONFLICT [$label]: refusing to replace existing path: $target"
+      (( conflict_count += 1 ))
+    fi
+  else
+    print -- "LINK    [$label] $target -> $source"
+    if [[ ! -d "$parent" && ${DIRECTORIES_TO_CREATE[(Ie)$parent]} -eq 0 ]]; then
+      DIRECTORIES_TO_CREATE+=("$parent")
+    fi
+  fi
+done
+
+if [[ -e "$GIT_WRAPPER" || -L "$GIT_WRAPPER" ]]; then
+  if git_wrapper_is_owned; then
+    GIT_WRAPPER_STATE="keep"
+    print -- "KEEP    [Git global wrapper] $GIT_WRAPPER"
+  else
+    GIT_WRAPPER_STATE="preserve"
+    print -- "PRESERVE [Git global wrapper] existing user configuration: $GIT_WRAPPER"
+    print -- "         Portable Git fragment is installed but must be included by an approved, reversible migration."
+  fi
+else
+  GIT_WRAPPER_STATE="create"
+  print -- "CREATE  [Git global wrapper] $GIT_WRAPPER"
+fi
+
+REFRESHER="$DOTFILES_DIR/bin/refresh-system-map"
+if [[ ! -x "$REFRESHER" ]]; then
+  print -u2 -- "CONFLICT [system map]: missing executable refresher: $REFRESHER"
+  (( conflict_count += 1 ))
+elif ! "$REFRESHER" --check; then
+  print -u2 -- "CONFLICT [system map]: refresh preflight failed"
+  (( conflict_count += 1 ))
+fi
+
+if (( conflict_count > 0 )); then
+  print -u2 -- ""
+  print -u2 -- "${PROGRAM}: $conflict_count conflict(s); no changes were made."
+  exit 1
+fi
+
+for directory in "${DIRECTORIES_TO_CREATE[@]}"; do
+  print -- "MKDIR   $directory"
+done
+
+if [[ "$MODE" == "dry-run" ]]; then
+  print -- ""
+  print -- "Dry run complete; no files were changed. Re-run with --apply to create this exact plan."
+  exit 0
+fi
+
+typeset -a CREATED_LINKS CREATED_DIRECTORIES
+typeset -i CREATED_GIT_WRAPPER=0
+ROLLBACK_NEEDED=1
+rollback() {
+  local rollback_target rollback_directory rollback_index rollback_source
+  (( ROLLBACK_NEEDED )) || return 0
+  if (( CREATED_GIT_WRAPPER )) && git_wrapper_is_owned; then
+    rm -f -- "$GIT_WRAPPER"
+  fi
+  for rollback_target in ${(O)CREATED_LINKS}; do
+    rollback_index=${TARGET_PATHS[(I)$rollback_target]}
+    if (( rollback_index > 0 )); then
+      rollback_source="${SOURCE_PATHS[rollback_index]}"
+    else
+      continue
+    fi
+    if link_is_owned "$rollback_target" "$rollback_source"; then
+      rm -f -- "$rollback_target"
+    fi
+  done
+  for rollback_directory in ${(O)CREATED_DIRECTORIES}; do
+    rmdir -- "$rollback_directory" 2>/dev/null || true
+  done
+}
+trap 'exit_status=$?; rollback; exit $exit_status' EXIT INT TERM
+
+create_directory_tree_safely() {
+  local requested="$1" cursor="$1" parent candidate
+  typeset -a missing_directories
+  while [[ ! -e "$cursor" && ! -L "$cursor" ]]; do
+    missing_directories=("$cursor" "${missing_directories[@]}")
+    cursor="${cursor:h}"
+  done
+  if [[ ! -d "$cursor" || -L "$cursor" ]]; then
+    print -u2 -- "${PROGRAM}: unsafe directory changed during apply: $cursor"
+    return 1
+  fi
+  for candidate in "${missing_directories[@]}"; do
+    parent="${candidate:h}"
+    if ! parent_chain_is_usable "$parent"; then
+      print -u2 -- "${PROGRAM}: parent changed during apply: $parent"
+      return 1
+    fi
+    if mkdir -- "$candidate" 2>/dev/null; then
+      CREATED_DIRECTORIES+=("$candidate")
+    elif [[ ! -d "$candidate" || -L "$candidate" ]]; then
+      print -u2 -- "${PROGRAM}: directory changed during apply: $candidate"
+      return 1
+    fi
+  done
+}
+
+for directory in "${DIRECTORIES_TO_CREATE[@]}"; do
+  create_directory_tree_safely "$directory"
+done
+
+for index in {1..${#TARGET_PATHS}}; do
+  source="${SOURCE_PATHS[index]}"
+  target="${TARGET_PATHS[index]}"
+  if ! target_is_safe_or_owned "$target" "$source"; then
+    print -u2 -- "${PROGRAM}: target changed during apply: $target"
+    exit 1
+  fi
+  if [[ ! -e "$target" && ! -L "$target" ]]; then
+    ln -s -- "$source" "$target"
+    CREATED_LINKS+=("$target")
+  fi
+done
+
+if [[ "$GIT_WRAPPER_STATE" == "create" ]]; then
+  if [[ -e "$GIT_WRAPPER" || -L "$GIT_WRAPPER" ]]; then
+    print -u2 -- "${PROGRAM}: Git global wrapper changed during apply: $GIT_WRAPPER"
+    exit 1
+  fi
+  GIT_WRAPPER_TEMP="$(mktemp "$HOME/.gitconfig.XXXXXXXX")"
+  trap 'exit_status=$?; [[ -n "${GIT_WRAPPER_TEMP:-}" ]] && rm -f -- "$GIT_WRAPPER_TEMP"; rollback; exit $exit_status' EXIT INT TERM
+  {
+    print -- "$GIT_WRAPPER_MARKER"
+    print -- '# This writable local wrapper includes portable and local-only Git settings.'
+    print -- '[include]'
+    print -- '    path = ~/.config/dotfiles/git/portable.gitconfig'
+    print -- '[include]'
+    print -- '    path = ~/.config/dotfiles/local/gitconfig'
+  } >"$GIT_WRAPPER_TEMP"
+  chmod 600 "$GIT_WRAPPER_TEMP"
+  if [[ -e "$GIT_WRAPPER" || -L "$GIT_WRAPPER" ]]; then
+    print -u2 -- "${PROGRAM}: Git global wrapper changed during apply: $GIT_WRAPPER"
+    exit 1
+  fi
+  CREATED_GIT_WRAPPER=1
+  mv -- "$GIT_WRAPPER_TEMP" "$GIT_WRAPPER"
+  GIT_WRAPPER_TEMP=""
+fi
+
+if ! "$REFRESHER" --apply; then
+  print -u2 -- "${PROGRAM}: system-map refresh failed; rolling back links created by this run"
+  exit 1
+fi
+
+print -- ""
+print -- "Core bootstrap complete. No optional integration, credential, network, or service was installed."
+ROLLBACK_NEEDED=0

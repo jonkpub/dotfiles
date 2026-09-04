@@ -1,0 +1,33 @@
+# macOS noise
+.DS_Store
+
+# Tool/runtime state
+.zcompdump
+
+# Generated application and dependency output. Keep the source trees, but
+# never stage or mirror their locally rebuilt artifacts.
+/vendor/**/target/
+/vendor/**/.build/
+/apps/**/.build/
+/apps/**/DerivedData/
+**/node_modules/
+
+# Python cache
+**/__pycache__/
+*.pyc
+
+# Editor noise
+*.swp
+*.swo
+
+# Secrets and machine-local auth should stay out of the repo.
+# Keep these outside dotfiles or in ignored override files if added later.
+.env
+.env.*
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# Never make local extensions part of the public portability layer.
+/config/dotfiles/local/

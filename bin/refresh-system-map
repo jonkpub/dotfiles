@@ -1,0 +1,290 @@
+#!/bin/zsh
+
+# Generate a private topology map for native agents. It intentionally omits
+# credentials, account data, host keys, and live Tailnet details.
+
+emulate -LR zsh
+setopt errexit nounset pipefail
+
+PROGRAM="${0:t}"
+MODE="apply"
+MANAGED_MARKER='<!-- managed-by: dotfiles-system-map-v1 -->'
+
+usage() {
+  cat <<EOF
+Usage: ${PROGRAM} [--check | --apply | --adopt-legacy | --help]
+
+  --check  Validate the source and output path, then print the refresh plan.
+  --apply  Atomically write the map after the same validation (default).
+  --adopt-legacy  Explicitly mark a recognizable map made by the previous
+                  generator, without regenerating or replacing its contents.
+  --help   Show this help text.
+
+Existing maps are replaced only when they carry this tool's managed marker.
+Symlinks and unsafe output-directory ancestors are always refused.
+Use --adopt-legacy only to migrate an existing generated map that lacks the
+marker; ordinary refreshes never adopt or overwrite an unmarked map.
+EOF
+}
+
+if (( $# > 1 )); then
+  print -u2 -- "${PROGRAM}: expected at most one option"; usage >&2; exit 2
+fi
+if (( $# == 1 )); then
+  case "$1" in
+    --check) MODE="check" ;;
+    --apply) ;;
+    --adopt-legacy) MODE="adopt-legacy" ;;
+    --help|-h) usage; exit 0 ;;
+    *) print -u2 -- "${PROGRAM}: unknown option: $1"; usage >&2; exit 2 ;;
+  esac
+fi
+
+if [[ -z "${HOME:-}" || "$HOME" != /* || "$HOME" == "/" || ! -d "$HOME" || "$HOME" != "${HOME:A}" ]]; then
+  print -u2 -- "${PROGRAM}: HOME must be an existing, absolute, canonical, non-root directory"
+  exit 1
+fi
+if [[ -n "${DOTFILES_SOURCE_DIR:-}" ]]; then
+  if [[ "$DOTFILES_SOURCE_DIR" != /* ]]; then
+    print -u2 -- "${PROGRAM}: DOTFILES_SOURCE_DIR must be an absolute path"; exit 1
+  fi
+  DOTFILES_DIR="${DOTFILES_SOURCE_DIR:A}"
+else
+  DOTFILES_DIR="${0:A:h:h}"
+fi
+if [[ ! -d "$DOTFILES_DIR" || ! -f "$DOTFILES_DIR/AGENTS.md" ]]; then
+  print -u2 -- "${PROGRAM}: not a usable dotfiles source: $DOTFILES_DIR"; exit 1
+fi
+GIT_BIN="$(command -v git || true)"
+if [[ -z "$GIT_BIN" ]] || [[ "$("$GIT_BIN" -C "$DOTFILES_DIR" rev-parse --is-inside-work-tree 2>/dev/null || true)" != "true" ]]; then
+  print -u2 -- "${PROGRAM}: dotfiles source is not a Git worktree: $DOTFILES_DIR"; exit 1
+fi
+WORKTREE_ROOT="$("$GIT_BIN" -C "$DOTFILES_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "$WORKTREE_ROOT" || "$DOTFILES_DIR" != "${WORKTREE_ROOT:A}" ]]; then
+  print -u2 -- "${PROGRAM}: dotfiles source must be the Git worktree root: $DOTFILES_DIR"; exit 1
+fi
+
+ORGANIZATION_POLICY="$DOTFILES_DIR/config/workstation/organization.md"
+if [[ ! -f "$ORGANIZATION_POLICY" || -L "$ORGANIZATION_POLICY" ]] || ! "$GIT_BIN" -C "$DOTFILES_DIR" ls-files --error-unmatch -- 'config/workstation/organization.md' >/dev/null 2>&1; then
+  print -u2 -- "${PROGRAM}: missing regular tracked organization policy: $ORGANIZATION_POLICY"; exit 1
+fi
+
+OUTPUT_DIR="$HOME/.local/share/workstation"
+OUTPUT_FILE="$OUTPUT_DIR/SYSTEM_MAP.md"
+
+map_is_owned() {
+  local file="$1" first_line
+  [[ -f "$file" && ! -L "$file" ]] || return 1
+  IFS= read -r first_line < "$file" || return 1
+  [[ "$first_line" == "$MANAGED_MARKER" ]]
+}
+
+legacy_map_is_recognized() {
+  local file="$1"
+  [[ -f "$file" && ! -L "$file" ]] || return 1
+  grep -Fqx '# System Map' "$file" &&
+    grep -Fqx 'Map scope: local, private, and safe for ordinary agent context.' "$file" &&
+    grep -Fqx '## Current workstation' "$file" &&
+    grep -Fqx '## File and project placement' "$file" &&
+    grep -Fqx '## Working rules' "$file" &&
+    grep -Fqx '## Refresh policy' "$file"
+}
+
+directory_chain_is_safe() {
+  local component path="$HOME" relative="${OUTPUT_DIR#$HOME/}"
+  for component in ${(s:/:)relative}; do
+    path="$path/$component"
+    if [[ -e "$path" || -L "$path" ]]; then
+      [[ -d "$path" && ! -L "$path" ]] || return 1
+    fi
+  done
+}
+
+if ! directory_chain_is_safe; then
+  print -u2 -- "${PROGRAM}: refusing unsafe output directory ancestor: $OUTPUT_DIR"; exit 1
+fi
+if [[ -e "$OUTPUT_FILE" || -L "$OUTPUT_FILE" ]] && ! map_is_owned "$OUTPUT_FILE"; then
+  if [[ "$MODE" != "adopt-legacy" ]] || ! legacy_map_is_recognized "$OUTPUT_FILE"; then
+    print -u2 -- "${PROGRAM}: refusing to replace non-owned system map: $OUTPUT_FILE"; exit 1
+  fi
+fi
+
+if [[ "$MODE" == "adopt-legacy" ]]; then
+  if map_is_owned "$OUTPUT_FILE"; then
+    print -u2 -- "${PROGRAM}: system map is already managed: $OUTPUT_FILE"; exit 1
+  fi
+  if ! legacy_map_is_recognized "$OUTPUT_FILE"; then
+    print -u2 -- "${PROGRAM}: refusing to adopt an unrecognized map: $OUTPUT_FILE"; exit 1
+  fi
+  print -- "ADOPT $OUTPUT_FILE"
+  TEMP_FILE="$(mktemp "$OUTPUT_DIR/.SYSTEM_MAP.md.XXXXXXXX")"
+  trap '[[ -n "${TEMP_FILE:-}" ]] && rm -f -- "$TEMP_FILE"' EXIT INT TERM
+  { print -- "$MANAGED_MARKER"; cat -- "$OUTPUT_FILE"; } >"$TEMP_FILE"
+  chmod 600 "$TEMP_FILE"
+  if ! directory_chain_is_safe || ! legacy_map_is_recognized "$OUTPUT_FILE"; then
+    print -u2 -- "${PROGRAM}: map changed during legacy adoption"; exit 1
+  fi
+  mv -f -- "$TEMP_FILE" "$OUTPUT_FILE"
+  TEMP_FILE=""
+  print -- "adopted legacy local system map: $OUTPUT_FILE"
+  exit 0
+fi
+
+typeset -a planned_directories
+typeset -i output_directory_will_be_created=0
+for directory in "$HOME/.local" "$HOME/.local/share" "$OUTPUT_DIR"; do
+  if [[ ! -e "$directory" && ! -L "$directory" ]]; then
+    planned_directories+=("$directory")
+    [[ "$directory" == "$OUTPUT_DIR" ]] && output_directory_will_be_created=1
+  fi
+done
+for directory in "${planned_directories[@]}"; do
+  print -- "MKDIR   $directory"
+done
+(( output_directory_will_be_created )) && print -- "CHMOD   700 $OUTPUT_DIR"
+if [[ -e "$OUTPUT_FILE" || -L "$OUTPUT_FILE" ]]; then
+  print -- "REFRESH $OUTPUT_FILE"
+else
+  print -- "CREATE  $OUTPUT_FILE"
+fi
+if [[ "$MODE" == "check" ]]; then
+  print -- "System-map preflight complete; no files were changed."
+  exit 0
+fi
+
+typeset -a created_directories
+typeset -i output_directory_created=0
+rollback_directories() {
+  local rollback_directory
+  for rollback_directory in ${(O)created_directories}; do
+    rmdir -- "$rollback_directory" 2>/dev/null || true
+  done
+}
+for directory in "$HOME/.local" "$HOME/.local/share" "$OUTPUT_DIR"; do
+  if [[ ! -e "$directory" && ! -L "$directory" ]]; then
+    parent="${directory:h}"
+    if [[ ! -d "$parent" || -L "$parent" ]]; then
+      print -u2 -- "${PROGRAM}: output parent changed during apply: $parent"
+      rollback_directories; exit 1
+    fi
+    mkdir -- "$directory"
+    created_directories+=("$directory")
+    [[ "$directory" == "$OUTPUT_DIR" ]] && output_directory_created=1
+  elif [[ ! -d "$directory" || -L "$directory" ]]; then
+    print -u2 -- "${PROGRAM}: output directory changed during apply: $directory"
+    rollback_directories; exit 1
+  fi
+done
+(( output_directory_created )) && chmod 700 "$OUTPUT_DIR"
+
+TEMP_FILE=""
+REFRESH_SUCCESS=0
+cleanup() {
+  [[ -n "${TEMP_FILE:-}" ]] && rm -f -- "$TEMP_FILE"
+  (( REFRESH_SUCCESS )) || rollback_directories
+}
+trap cleanup EXIT INT TERM
+TEMP_FILE="$(mktemp "$OUTPUT_DIR/.SYSTEM_MAP.md.XXXXXXXX")"
+
+branch=$("$GIT_BIN" -C "$DOTFILES_DIR" branch --show-current 2>/dev/null || print "unknown")
+changes=$("$GIT_BIN" -C "$DOTFILES_DIR" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+os=$(uname -srm)
+case "$(uname -s)" in
+  Darwin) workstation_profile="darwin" ;;
+  Linux)
+    if command -v omarchy >/dev/null 2>&1 || [[ -d /usr/share/omarchy ]]; then
+      workstation_profile="omarchy"
+    else
+      workstation_profile="linux"
+    fi
+    ;;
+  *) workstation_profile="unsupported" ;;
+esac
+refreshed_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+if command -v tailscale >/dev/null 2>&1; then
+  tailnet_status="Tailscale client available; use approved, scoped commands only."
+else
+  tailnet_status="Tailscale client is not currently available on PATH."
+fi
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  exchange_root="$HOME/Library/Mobile Documents/com~apple~CloudDocs/Agent Exchange"
+  if [[ -d "$exchange_root" ]]; then
+    exchange_status="Available at the configured iCloud Agent Exchange folder."
+  else
+    exchange_status="Not configured locally; do not create or assume this folder without approval."
+  fi
+else
+  exchange_status="Not applicable on this platform; use only an explicitly configured cross-machine exchange."
+fi
+if [[ -n "$("$GIT_BIN" -C "$DOTFILES_DIR" remote get-url origin 2>/dev/null || true)" ]]; then
+  publication_status="Direct origin configured; publish only after the public manifest and secret scan pass."
+else
+  publication_status="No direct origin configured; publication is intentionally unavailable."
+fi
+typeset -a helpers
+helpers=(install-core refresh-system-map)
+
+{
+  print -- "$MANAGED_MARKER"
+  print '# System Map'
+  print
+  print "Last refreshed: $refreshed_at"
+  print "Machine platform: $os"
+  print 'Map scope: local, private, and safe for ordinary agent context.'
+  print
+  print '## Current workstation'
+  print
+  print -r -- "- Dotfiles source: $DOTFILES_DIR"
+  print -r -- "- Dotfiles branch: $branch"
+  print -r -- "- Uncommitted dotfiles paths: $changes"
+  print -r -- "- Workstation profile: $workstation_profile"
+  print -r -- "- Publication: $publication_status"
+  print -r -- "- Tailnet: $tailnet_status"
+  print -r -- "- iCloud Agent Exchange: $exchange_status"
+  print
+  print '## File and project placement'
+  print
+  print -r -- '- Existing files: classify first; do not move durable content without preview and approval.'
+  print -r -- '- Development projects: ~/Projects'
+  print -r -- '- Temporary agent experiments: ~/Projects/_scratch when the task is clearly disposable.'
+  print -r -- '- Durable personal documents: ~/Documents'
+  print -r -- '- Downloads and Desktop: treat as inboxes, not authoritative long-term project roots.'
+  print -r -- '- iCloud: personal/archive layer; use Agent Exchange only for deliberate cross-boundary transfer.'
+  print
+  print '## Organization policy'
+  print
+  cat -- "$ORGANIZATION_POLICY"
+  print
+  print '## Working rules'
+  print
+  print -r -- '- Read the nearest project guidance after this map.'
+  print -r -- '- Check Git status before changing an existing repository.'
+  print -r -- '- Edit ~/dotfiles, not home-directory shell or Git stubs.'
+  print -r -- '- Do not publish unexplained, generated, private, or secret-bearing changes.'
+  print -r -- '- Never expose raw credentials. Use authenticated applications or declared capabilities where available.'
+  print -r -- '- Do not change Tailnet, cloud, external services, or personal files without an explicit task.'
+  print
+  print '## Available dotfiles helpers'
+  print
+  for helper in "${helpers[@]}"; do
+    [[ -x "$DOTFILES_DIR/bin/$helper" ]] && print -r -- "- $helper"
+  done
+  print
+  print '## Refresh policy'
+  print
+  print -r -- '- Refresh this map at the beginning of a machine-management or dotfiles task.'
+  print -r -- '- Refresh after installing tools, changing dotfiles, changing machine role, or changing approved local preferences.'
+  print -r -- '- This snapshot is not a source of truth for secrets, live Tailnet peers, cloud state, or external account state.'
+} >"$TEMP_FILE"
+chmod 600 "$TEMP_FILE"
+
+if ! directory_chain_is_safe; then
+  print -u2 -- "${PROGRAM}: output directory changed during apply"; exit 1
+fi
+if [[ -e "$OUTPUT_FILE" || -L "$OUTPUT_FILE" ]] && ! map_is_owned "$OUTPUT_FILE"; then
+  print -u2 -- "${PROGRAM}: system map changed to a non-owned path during apply"; exit 1
+fi
+mv -f -- "$TEMP_FILE" "$OUTPUT_FILE"
+TEMP_FILE=""
+REFRESH_SUCCESS=1
+print -- "refreshed local system map: $OUTPUT_FILE"

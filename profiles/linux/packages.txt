@@ -1,0 +1,18 @@
+# Generic Linux package identifiers. Use the host distribution's normal
+# package workflow; this is a reference, not an installer input.
+atuin
+bash
+bat
+broot
+eza
+fd
+fzf
+git
+git-lfs
+gitui
+ripgrep
+starship
+tmux
+yazi
+zoxide
+zsh

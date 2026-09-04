@@ -1,0 +1,17 @@
+# Arch package identifiers for deliberately missing tools. Use Omarchy's
+# package workflow; Omarchy already provides much of this baseline.
+atuin
+bat
+broot
+eza
+fd
+fzf
+github-cli
+git
+git-lfs
+gitui
+ripgrep
+starship
+tmux
+yazi
+zoxide

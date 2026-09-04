@@ -1,0 +1,59 @@
+name: Core bootstrap
+
+# This becomes active when dotfiles is published as its own GitHub repository.
+# The current profile-repository subtree mirror does not expose nested workflow
+# files to GitHub Actions.
+
+on:
+  push:
+    paths:
+      - 'AGENTS.md'
+      - 'bin/install-core'
+      - 'bin/refresh-system-map'
+      - 'profiles/**'
+      - 'config/workstation/**'
+      - 'config/starship.toml'
+      - 'config/atuin/**'
+      - 'config/broot/**'
+      - 'tests/install-core-test.zsh'
+      - '.github/workflows/core-bootstrap.yml'
+  pull_request:
+    paths:
+      - 'AGENTS.md'
+      - 'bin/install-core'
+      - 'bin/refresh-system-map'
+      - 'profiles/**'
+      - 'config/workstation/**'
+      - 'config/starship.toml'
+      - 'config/atuin/**'
+      - 'config/broot/**'
+      - 'tests/install-core-test.zsh'
+      - '.github/workflows/core-bootstrap.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux bootstrap safety
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install test dependencies
+        run: sudo apt-get update && sudo apt-get install --yes zsh ripgrep
+
+      - name: Validate and test the portable core
+        run: |
+          zsh -n bin/install-core
+          zsh -n bin/refresh-system-map
+          zsh -n tests/install-core-test.zsh
+          bash -n profiles/common/bash/workflow.bash
+          zsh tests/install-core-test.zsh

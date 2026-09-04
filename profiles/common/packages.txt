@@ -1,0 +1,11 @@
+# Baseline capabilities. Package installation is an explicit profile action;
+# platform manifests map these capabilities to package identifiers.
+atuin
+bat
+bash
+broot
+git
+git-lfs
+zsh
+tmux
+starship
