@@ -1,0 +1,196 @@
+#!/bin/zsh
+
+# Detect native coding-agent CLIs and install only minimal managed pointers to
+# the canonical provider-neutral AGENTS.md when a tool cannot read it directly.
+
+emulate -LR zsh
+setopt errexit nounset pipefail
+
+# Launchd and other non-interactive callers do not inherit the user's shell
+# path. Keep discovery portable while recognizing the conventional local paths.
+typeset -U path PATH
+for command_directory in "$HOME/.local/bin" /opt/homebrew/bin /usr/local/bin; do
+  [[ -d "$command_directory" ]] && path=("$command_directory" $path)
+done
+export PATH
+
+PROGRAM="$0:t"
+MODE="check"
+MERGE_EXISTING=0
+MARKER_PREFIX='<!-- managed-by: workstation-agent-adapter-v1; adapter: '
+STATE_ROOT="${XDG_STATE_HOME:-}"
+[[ -n "$STATE_ROOT" ]] || STATE_ROOT="$HOME/.local/state"
+STATE_ROOT="$STATE_ROOT/workstation/agent-adapters"
+
+usage() {
+  cat <<EOF
+Usage: $PROGRAM [--check | --json | --apply [--merge-existing] | --help]
+
+  --check            Print the compatibility plan without changing files.
+  --json             Emit a machine-readable compatibility snapshot.
+  --apply            Create missing managed adapters only.
+  --merge-existing   With --apply, back up and append the managed import to an
+                     existing user-owned Claude/Gemini context file.
+
+The canonical source is ~/AGENTS.md. This helper never writes provider
+credentials, changes model settings, or overwrites an unmarked user file.
+EOF
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+    --check) MODE="check" ;;
+    --json) MODE="json" ;;
+    --apply) MODE="apply" ;;
+    --merge-existing) MERGE_EXISTING=1 ;;
+    --help|-h) usage; exit 0 ;;
+    *) print -u2 -- "$PROGRAM: unknown option: $1"; usage >&2; exit 2 ;;
+  esac
+  shift
+done
+
+[[ "$MERGE_EXISTING" == 0 || "$MODE" == "apply" ]] || {
+  print -u2 -- "$PROGRAM: --merge-existing requires --apply"; exit 2
+}
+[[ -n "$HOME" && "$HOME" == /* && "$HOME" != / && -d "$HOME" ]] || {
+  print -u2 -- "$PROGRAM: HOME must be an existing non-root absolute directory"; exit 1
+}
+
+CANONICAL="$HOME/AGENTS.md"
+
+command_available() { command -v "$1" >/dev/null 2>&1 }
+
+adapter_path() {
+  case "$1" in
+    claude) print -r -- "$HOME/.claude/CLAUDE.md" ;;
+    gemini) print -r -- "$HOME/.gemini/GEMINI.md" ;;
+    *) return 1 ;;
+  esac
+}
+
+adapter_marker() { print -r -- "$MARKER_PREFIX$1 -->" }
+
+adapter_contents() {
+  adapter_marker "$1"
+  print -r -- '@~/AGENTS.md'
+}
+
+adapter_state() {
+  local id="$1" adapter_file marker
+  adapter_file="$(adapter_path "$id")"
+  marker="$(adapter_marker "$id")"
+  if [[ ! -e "$adapter_file" && ! -L "$adapter_file" ]]; then
+    print -r -- missing
+  elif [[ -f "$adapter_file" ]] && grep -Fqx -- "$marker" "$adapter_file"; then
+    print -r -- managed
+  else
+    print -r -- user-owned
+  fi
+}
+
+readiness() {
+  local id="$1" state
+  case "$id" in
+    codex|opencode)
+      [[ -e "$CANONICAL" || -L "$CANONICAL" ]] && print -r -- ready || print -r -- missing-canonical
+      ;;
+    claude|gemini)
+      state="$(adapter_state "$id")"
+      case "$state" in
+        managed) print -r -- ready ;;
+        missing) print -r -- adapter-needed ;;
+        *) print -r -- adapter-merge-needed ;;
+      esac
+      ;;
+    hermes) print -r -- project-local-only ;;
+  esac
+}
+
+json_boolean() { command_available "$1" && print -n -- true || print -n -- false }
+
+emit_json() {
+  local comma="" id direct adapter state ready
+  print -- '{'
+  print -n -- '  "canonicalAvailable": '
+  [[ -e "$CANONICAL" || -L "$CANONICAL" ]] && print -- 'true,' || print -- 'false,'
+  print -- '  "agents": ['
+  for id in codex claude gemini opencode hermes; do
+    [[ -n "$comma" ]] && print -- ','
+    case "$id" in
+      codex|opencode) direct=true; adapter=false; state=direct ;;
+      claude|gemini) direct=false; adapter=true; state="$(adapter_state "$id")" ;;
+      hermes) direct=false; adapter=false; state=none ;;
+    esac
+    ready="$(readiness "$id")"
+    print -n -- "    {\"id\":\"$id\",\"available\":"
+    json_boolean "$id"
+    print -n -- ",\"directAgentsMd\":$direct,\"adapterRequired\":$adapter,\"adapterState\":\"$state\",\"readiness\":\"$ready\"}"
+    comma=1
+  done
+  print
+  print -- '  ]'
+  print -- '}'
+}
+
+create_adapter() {
+  local id="$1" adapter_file directory temporary
+  adapter_file="$(adapter_path "$id")"
+  directory="$adapter_file:h"
+  mkdir -p -- "$directory"
+  temporary="$(mktemp "$directory/.$id-adapter.XXXXXX")"
+  adapter_contents "$id" >"$temporary"
+  chmod 600 "$temporary"
+  mv -- "$temporary" "$adapter_file"
+  print -- "CREATE  [$id adapter] $adapter_file"
+}
+
+backup_and_append() {
+  local id="$1" adapter_file backup_dir backup
+  adapter_file="$(adapter_path "$id")"
+  backup_dir="$STATE_ROOT/backups"
+  mkdir -p -- "$backup_dir"
+  chmod 700 "$STATE_ROOT:h:h" "$STATE_ROOT:h" "$STATE_ROOT" "$backup_dir" 2>/dev/null || true
+  backup="$backup_dir/$id-$(date -u '+%Y%m%dT%H%M%SZ').md"
+  cp -p -- "$adapter_file" "$backup"
+  print >>"$adapter_file"
+  adapter_contents "$id" >>"$adapter_file"
+  chmod 600 "$adapter_file" "$backup"
+  print -- "MERGED  [$id adapter] $adapter_file (backup: $backup)"
+}
+
+apply_adapter() {
+  local id="$1" state
+  command_available "$id" || return 0
+  state="$(adapter_state "$id")"
+  case "$state" in
+    managed) print -- "KEEP    [$id adapter] $(adapter_path "$id")" ;;
+    missing) create_adapter "$id" ;;
+    user-owned)
+      (( MERGE_EXISTING )) && backup_and_append "$id" || print -- "HOLD    [$id adapter] existing user-owned file: $(adapter_path "$id")"
+      ;;
+  esac
+}
+
+if [[ "$MODE" == json ]]; then
+  emit_json
+  exit 0
+fi
+
+print -- "mode: $MODE"
+print -- "canonical context: $CANONICAL"
+[[ -e "$CANONICAL" || -L "$CANONICAL" ]] || print -u2 -- "WARN: canonical AGENTS.md is missing"
+print
+for id in codex claude gemini opencode hermes; do
+  command_available "$id" && print -- "DETECTED $id: $(readiness "$id")" || print -- "ABSENT   $id"
+done
+
+if [[ "$MODE" == apply ]]; then
+  print
+  apply_adapter claude
+  apply_adapter gemini
+  print
+  print -- 'Apply complete. Direct AGENTS.md tools require no provider adapter.'
+else
+  print
+  print -- 'Check complete; no files were changed.'
+fi

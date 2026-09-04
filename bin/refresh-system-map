@@ -72,6 +72,7 @@ CONTEXT_SOURCE_RELATIVE_PATHS=(
   config/workstation/project-lifecycle.md
   config/workstation/machine-roles.md
   config/workstation/safety.md
+  config/workstation/agent-integrations.md
 )
 for context_relative_path in "${CONTEXT_SOURCE_RELATIVE_PATHS[@]}"; do
   context_source="$DOTFILES_DIR/$context_relative_path"
@@ -234,7 +235,7 @@ else
   publication_status="No direct origin configured; publication is intentionally unavailable."
 fi
 typeset -a helpers
-helpers=(install-core refresh-system-map new-agent-project)
+helpers=(install-core refresh-system-map new-agent-project agent-context)
 
 {
   print -- "$MANAGED_MARKER"

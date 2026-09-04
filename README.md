@@ -26,6 +26,8 @@ background service in this core.
 
 - a concise global [`AGENTS.md`](AGENTS.md) that tells compatible native agents
   to read a locally generated system map first;
+- a native-agent compatibility registry and a minimal adapter generator for
+  tools that require a different instruction-file name;
 - safe links for the selected shell profile, Git, tmux, Starship, Atuin, and
   broot configuration;
 - an advisory organization policy for projects, personal files, inboxes, and
@@ -101,6 +103,26 @@ workflow, project lifecycle, machine roles, organization policy, and safety.
 The generated map names these files so an agent can load only the relevant
 document for its current task.
 
+## Native-agent compatibility
+
+The public [native-agent integration registry](config/workstation/agent-integrations.md)
+keeps `AGENTS.md` as the sole source of shared policy. It records which tools
+discover that file directly and which tools need a tiny local import adapter.
+The local scanner/generator is for agents, recovery, CI, and the optional Agent
+Console; a person does not need to memorize it:
+
+```sh
+~/dotfiles/bin/agent-context --check
+~/dotfiles/bin/agent-context --apply
+```
+
+`--apply` creates only missing managed adapters. It never overwrites an
+existing unmarked Claude or Gemini context file. If a deliberate merge is
+approved, `--apply --merge-existing` first writes a private timestamped backup
+under `~/.local/state/workstation/agent-adapters/backups/`, then appends a
+two-line import of `~/AGENTS.md`. The adapters contain no policy copy, secrets,
+model settings, or credentials.
+
 If a managed map needs a refresh:
 
 ```sh
@@ -170,6 +192,7 @@ Run the portable bootstrap regression suite locally:
 
 ```sh
 zsh ~/dotfiles/tests/install-core-test.zsh
+zsh ~/dotfiles/tests/agent-context-test.zsh
 ```
 
 The repository includes a Linux CI workflow for the same test. It becomes
