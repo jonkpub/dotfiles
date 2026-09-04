@@ -13,7 +13,7 @@ state, credentials, or a provider-specific workflow.
 | OpenCode v2 | Discovers `AGENTS.md` from the current location through home | None; direct | Verified when `~/AGENTS.md` exists. |
 | Claude Code | Reads `CLAUDE.md`; imports `AGENTS.md` with `@` syntax | Managed `~/.claude/CLAUDE.md` import only when required | Verified after the managed import exists. |
 | Gemini CLI | Reads global and project `GEMINI.md`; imports files with `@` syntax | Managed `~/.gemini/GEMINI.md` import only when required | Verified after the managed import exists. |
-| Hermes | Can load `AGENTS.md` from the active working directory | No global adapter until its global-loading behavior is explicitly verified | Not offered by the launcher yet. |
+| Hermes (default profile) | Loads global `SOUL.md`, plus project `AGENTS.md` from its working directory | Managed `~/.hermes/SOUL.md` bridge that directs every default-profile session to `~/AGENTS.md` | Verified after the bridge and runtime check pass. |
 
 The registry is deliberately conservative. A tool that is not detected, whose
 context behavior has not been verified, or whose existing user-owned file
@@ -33,7 +33,8 @@ It may create a missing adapter. It replaces only an adapter carrying that
 exact marker. When a user-owned adapter file already exists, normal apply mode
 leaves it unchanged. An explicit merge mode creates a private timestamped
 backup under `~/.local/state/workstation/agent-adapters/backups/` before it
-appends the managed import.
+appends the managed import or Hermes SOUL bridge. Hermes named profiles remain
+unchanged; this bridge applies only to the default Hermes profile.
 
 ## Responsibilities
 

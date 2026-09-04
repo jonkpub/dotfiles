@@ -29,8 +29,8 @@ Usage: $PROGRAM [--check | --json | --apply [--merge-existing] | --help]
   --check            Print the compatibility plan without changing files.
   --json             Emit a machine-readable compatibility snapshot.
   --apply            Create missing managed adapters only.
-  --merge-existing   With --apply, back up and append the managed import to an
-                     existing user-owned Claude/Gemini context file.
+  --merge-existing   With --apply, back up and append the managed context
+                     bridge to an existing user-owned provider file.
 
 The canonical source is ~/AGENTS.md. This helper never writes provider
 credentials, changes model settings, or overwrites an unmarked user file.
@@ -74,6 +74,15 @@ runtime_state() {
         print -r -- failed
       fi
       ;;
+    hermes)
+      # Hermes currently hangs on --version in this installation. Its help
+      # surface is local, non-mutating, and exercises the executable instead.
+      if /usr/bin/perl -e 'alarm shift @ARGV; exec @ARGV' 4 "$id" --help >/dev/null 2>&1; then
+        print -r -- healthy
+      else
+        print -r -- failed
+      fi
+      ;;
     *) print -r -- not-checked ;;
   esac
 }
@@ -82,15 +91,25 @@ adapter_path() {
   case "$1" in
     claude) print -r -- "$HOME/.claude/CLAUDE.md" ;;
     gemini) print -r -- "$HOME/.gemini/GEMINI.md" ;;
+    hermes) print -r -- "$HOME/.hermes/SOUL.md" ;;
     *) return 1 ;;
   esac
 }
 
-adapter_marker() { print -r -- "$MARKER_PREFIX$1 -->" }
+adapter_marker() {
+  [[ "$1" == hermes ]] && print -r -- '<!-- managed-by: workstation-hermes-soul-v1 -->' || print -r -- "$MARKER_PREFIX$1 -->"
+}
 
 adapter_contents() {
-  adapter_marker "$1"
-  print -r -- '@~/AGENTS.md'
+  local id="$1"
+  adapter_marker "$id"
+  if [[ "$id" == hermes ]]; then
+    print -- '## Workstation context bridge'
+    print
+    print -- 'Before planning or taking action, read `~/AGENTS.md`, then read the private local System Map it names. Treat those files as the shared workstation policy. Read the nearest project `AGENTS.md` for repository-specific guidance. Do not treat this SOUL section as a second policy source.'
+  else
+    print -r -- '@~/AGENTS.md'
+  fi
 }
 
 adapter_state() {
@@ -112,7 +131,7 @@ readiness() {
     codex|opencode)
       [[ -e "$CANONICAL" || -L "$CANONICAL" ]] && print -r -- ready || print -r -- missing-canonical
       ;;
-    claude|gemini)
+    claude|gemini|hermes)
       state="$(adapter_state "$id")"
       case "$state" in
         managed) print -r -- ready ;;
@@ -136,8 +155,7 @@ emit_json() {
     [[ -n "$comma" ]] && print -- ','
     case "$id" in
       codex|opencode) direct=true; adapter=false; state=direct ;;
-      claude|gemini) direct=false; adapter=true; state="$(adapter_state "$id")" ;;
-      hermes) direct=false; adapter=false; state=none ;;
+      claude|gemini|hermes) direct=false; adapter=true; state="$(adapter_state "$id")" ;;
     esac
     ready="$(readiness "$id")"
     runtime="$(runtime_state "$id")"
@@ -207,6 +225,7 @@ if [[ "$MODE" == apply ]]; then
   print
   apply_adapter claude
   apply_adapter gemini
+  apply_adapter hermes
   print
   print -- 'Apply complete. Direct AGENTS.md tools require no provider adapter.'
 else
