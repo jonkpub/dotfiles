@@ -18,5 +18,10 @@ audit identifies the user's actual overrides and the relevant Omarchy version.
 Use Omarchy's Setup/menu or `omarchy` CLI for changes that need a service
 reload, and preserve the platform's update/reset path.
 
+The bootstrap implementation requires the `zsh` executable, listed in
+`packages.txt`; installing it does not change Omarchy's Bash login shell or
+user shell configuration. Package installation remains a deliberate, separate
+step from the core linker.
+
 Machine-local desktop changes belong outside the public projection. Track only
 portable, intentional overrides after reviewing them on the Omarchy machine.
