@@ -40,8 +40,8 @@ appends the managed import.
 - `bin/agent-context`: detects supported local CLIs, reports context readiness,
   and creates or merges only the minimal required adapters.
 - `bin/refresh-system-map`: includes this registry in the private System Map.
-- Agent Console: shows the compatibility matrix and only offers local launches
-  for tools whose context path is currently verified.
+- Agent Console: shows context readiness separately from a local `--version`
+  runtime check, and only offers local launches when both are healthy.
 
 This layer does not manage provider authentication, models, usage, routing,
 MCP configuration, memories, or credentials. Those remain outside the public

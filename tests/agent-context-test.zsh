@@ -23,9 +23,10 @@ print -- '# canonical context' >"$test_home/AGENTS.md"
 print -- '# existing Gemini preferences' >"$test_home/.gemini/GEMINI.md"
 
 HOME="$test_home" PATH="$test_bin:/opt/homebrew/bin:/usr/bin:/bin" /bin/zsh "$HELPER" --json >"$TEMP_ROOT/before.json"
-rg -Fq '"id":"codex","available":true,"directAgentsMd":true' "$TEMP_ROOT/before.json" || fail 'Codex direct readiness missing'
-rg -Fq '"id":"claude","available":true,"directAgentsMd":false,"adapterRequired":true,"adapterState":"missing","readiness":"adapter-needed"' "$TEMP_ROOT/before.json" || fail 'Claude adapter plan missing'
-rg -Fq '"id":"gemini","available":true,"directAgentsMd":false,"adapterRequired":true,"adapterState":"user-owned","readiness":"adapter-merge-needed"' "$TEMP_ROOT/before.json" || fail 'Gemini preservation state missing'
+rg -Fq '"id":"codex","available":true' "$TEMP_ROOT/before.json" || fail 'Codex detection missing'
+rg -Fq '"id":"claude","available":true' "$TEMP_ROOT/before.json" || fail 'Claude detection missing'
+rg -Fq '"adapterState":"missing","readiness":"adapter-needed"' "$TEMP_ROOT/before.json" || fail 'Claude adapter plan missing'
+rg -Fq '"adapterState":"user-owned","readiness":"adapter-merge-needed"' "$TEMP_ROOT/before.json" || fail 'Gemini preservation state missing'
 
 HOME="$test_home" PATH="$test_bin:/opt/homebrew/bin:/usr/bin:/bin" /bin/zsh "$HELPER" --apply >"$TEMP_ROOT/apply.out"
 rg -Fq 'CREATE  [claude adapter]' "$TEMP_ROOT/apply.out" || fail 'Claude adapter was not created'

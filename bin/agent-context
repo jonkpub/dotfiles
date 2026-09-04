@@ -60,6 +60,24 @@ CANONICAL="$HOME/AGENTS.md"
 
 command_available() { command -v "$1" >/dev/null 2>&1 }
 
+runtime_state() {
+  local id="$1"
+  command_available "$id" || { print -r -- absent; return; }
+  case "$id" in
+    codex|claude|gemini|opencode)
+      # Perl's alarm survives exec, so a broken CLI cannot stall Console refresh
+      # or bootstrap checks indefinitely. It is available on supported macOS and
+      # standard Linux installations.
+      if /usr/bin/perl -e 'alarm shift @ARGV; exec @ARGV' 4 "$id" --version >/dev/null 2>&1; then
+        print -r -- healthy
+      else
+        print -r -- failed
+      fi
+      ;;
+    *) print -r -- not-checked ;;
+  esac
+}
+
 adapter_path() {
   case "$1" in
     claude) print -r -- "$HOME/.claude/CLAUDE.md" ;;
@@ -109,7 +127,7 @@ readiness() {
 json_boolean() { command_available "$1" && print -n -- true || print -n -- false }
 
 emit_json() {
-  local comma="" id direct adapter state ready
+  local comma="" id direct adapter state ready runtime
   print -- '{'
   print -n -- '  "canonicalAvailable": '
   [[ -e "$CANONICAL" || -L "$CANONICAL" ]] && print -- 'true,' || print -- 'false,'
@@ -122,9 +140,10 @@ emit_json() {
       hermes) direct=false; adapter=false; state=none ;;
     esac
     ready="$(readiness "$id")"
+    runtime="$(runtime_state "$id")"
     print -n -- "    {\"id\":\"$id\",\"available\":"
     json_boolean "$id"
-    print -n -- ",\"directAgentsMd\":$direct,\"adapterRequired\":$adapter,\"adapterState\":\"$state\",\"readiness\":\"$ready\"}"
+    print -n -- ",\"runtimeState\":\"$runtime\",\"directAgentsMd\":$direct,\"adapterRequired\":$adapter,\"adapterState\":\"$state\",\"readiness\":\"$ready\"}"
     comma=1
   done
   print
