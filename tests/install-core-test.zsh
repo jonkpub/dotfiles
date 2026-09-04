@@ -151,7 +151,9 @@ assert_missing "$omarchy_profile_home/.profile"
 grep -Fq 'keep this desktop state' "$omarchy_profile_home/.config/hypr/keep" || fail "Omarchy desktop state was changed"
 PATH="$fake_omarchy_bin:$PATH" HOME="$omarchy_profile_home" TERM=xterm-256color bash --noprofile --norc -ic '. "$HOME/.local/share/dotfiles/bash/workflow.bash"' >"$TEMP_ROOT/omarchy-bash.out" 2>&1 || fail "managed Omarchy Bash workflow did not source"
 
-if HOME="$test_home" DOTFILES_SOURCE_DIR="$ROOT" zsh "$INSTALLER" --profile linux >"$TEMP_ROOT/profile-mismatch.out" 2>&1; then
+mismatch_profile="linux"
+[[ "$(uname -s)" == "Linux" ]] && mismatch_profile="darwin"
+if HOME="$test_home" DOTFILES_SOURCE_DIR="$ROOT" zsh "$INSTALLER" --profile "$mismatch_profile" >"$TEMP_ROOT/profile-mismatch.out" 2>&1; then
   fail "expected profile mismatch rejection"
 fi
 grep -Fq 'does not match this workstation' "$TEMP_ROOT/profile-mismatch.out" || fail "missing profile-mismatch rejection"
