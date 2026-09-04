@@ -1,0 +1,101 @@
+#!/bin/zsh
+
+# Create a new agent-owned project root without moving or classifying any
+# existing user files. This is intentionally a dry-run-first helper for agents.
+
+emulate -LR zsh
+setopt errexit nounset pipefail
+
+PROGRAM="${0:t}"
+MODE="dry-run"
+KIND=""
+NAME=""
+AREA="labs"
+
+usage() {
+  cat <<EOF
+Usage: $PROGRAM --kind scratch|project --name <lowercase-slug> [--area <lowercase-slug>] [--apply]
+
+Create a new agent-owned project root. The default is a dry run.
+
+  scratch  ~/Projects/_scratch/YYYY-MM-<name>
+  project  ~/Projects/<area>/<name>, initialized as a new Git repository
+
+This command never moves, overwrites, or classifies existing files.
+EOF
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+    --kind)
+      (( $# >= 2 )) || { print -u2 -- "$PROGRAM: --kind needs a value"; exit 2; }
+      KIND="$2"; shift
+      ;;
+    --name)
+      (( $# >= 2 )) || { print -u2 -- "$PROGRAM: --name needs a value"; exit 2; }
+      NAME="$2"; shift
+      ;;
+    --area)
+      (( $# >= 2 )) || { print -u2 -- "$PROGRAM: --area needs a value"; exit 2; }
+      AREA="$2"; shift
+      ;;
+    --apply) MODE="apply" ;;
+    --dry-run) MODE="dry-run" ;;
+    --help|-h) usage; exit 0 ;;
+    *) print -u2 -- "$PROGRAM: unknown option: $1"; usage >&2; exit 2 ;;
+  esac
+  shift
+done
+
+[[ -n "$KIND" && -n "$NAME" ]] || { print -u2 -- "$PROGRAM: --kind and --name are required"; usage >&2; exit 2; }
+[[ "$KIND" == scratch || "$KIND" == project ]] || { print -u2 -- "$PROGRAM: unsupported kind: $KIND"; exit 2; }
+for value in "$NAME" "$AREA"; do
+  [[ "$value" =~ '^[a-z0-9][a-z0-9-]*$' ]] || { print -u2 -- "$PROGRAM: names must use lowercase letters, digits, and hyphens: $value"; exit 2; }
+done
+[[ -n "${HOME:-}" && "$HOME" == /* && "$HOME" != / && -d "$HOME" ]] || { print -u2 -- "$PROGRAM: HOME must be an existing non-root absolute directory"; exit 1; }
+
+if [[ "$KIND" == scratch ]]; then
+  TARGET="$HOME/Projects/_scratch/$(date -u '+%Y-%m')-$NAME"
+  PROJECT_NOTE='Disposable exploration. Promote deliberately when this work gains durable value.'
+else
+  TARGET="$HOME/Projects/$AREA/$NAME"
+  PROJECT_NOTE='Durable project root. Record project-specific guidance as the work gains conventions.'
+fi
+
+if [[ -e "$TARGET" || -L "$TARGET" ]]; then
+  print -u2 -- "$PROGRAM: target already exists; refusing to reuse it: $TARGET"
+  exit 1
+fi
+
+README="$TARGET/README.md"
+print -- "mode: $MODE"
+print -- "kind: $KIND"
+print -- "target: $TARGET"
+print -- "MKDIR   $TARGET"
+print -- "CREATE  $README"
+[[ "$KIND" == project ]] && print -- "GIT INIT $TARGET"
+
+if [[ "$MODE" == dry-run ]]; then
+  print -- 'Dry run complete; no files were changed.'
+  exit 0
+fi
+
+mkdir -p -- "$TARGET"
+{
+  print -- "# $NAME"
+  print
+  print -- "$PROJECT_NOTE"
+  print
+  print '## Status'
+  print
+  print -- '- Created as agent-owned work.'
+  print -- '- Add project-specific goals, decisions, and verification notes here.'
+} >"$README"
+
+if [[ "$KIND" == project ]]; then
+  GIT_BIN="$(command -v git || true)"
+  [[ -n "$GIT_BIN" ]] || { print -u2 -- "$PROGRAM: Git is required for durable projects"; exit 1; }
+  "$GIT_BIN" -C "$TARGET" init -q -b main
+fi
+
+print -- "Created $KIND project: $TARGET"

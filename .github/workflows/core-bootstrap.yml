@@ -16,6 +16,7 @@ on:
       - 'config/atuin/**'
       - 'config/broot/**'
       - 'tests/install-core-test.zsh'
+      - 'tests/new-agent-project-test.zsh'
       - '.github/workflows/core-bootstrap.yml'
   pull_request:
     paths:
@@ -28,6 +29,7 @@ on:
       - 'config/atuin/**'
       - 'config/broot/**'
       - 'tests/install-core-test.zsh'
+      - 'tests/new-agent-project-test.zsh'
       - '.github/workflows/core-bootstrap.yml'
 
 permissions:
@@ -55,5 +57,7 @@ jobs:
           zsh -n bin/install-core
           zsh -n bin/refresh-system-map
           zsh -n tests/install-core-test.zsh
+          zsh -n tests/new-agent-project-test.zsh
           bash -n profiles/common/bash/workflow.bash
           zsh tests/install-core-test.zsh
+          zsh tests/new-agent-project-test.zsh

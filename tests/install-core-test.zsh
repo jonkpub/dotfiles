@@ -28,7 +28,7 @@ assert_owned_link() {
 make_minimal_source() {
   local destination="$1" source_file relative_path
   mkdir -p -- "$destination"
-  for relative_path in AGENTS.md bin/refresh-system-map profiles/common/zsh/.zshenv profiles/common/zsh/.zprofile profiles/common/zsh/.profile profiles/common/zsh/.zshrc profiles/common/git/.gitconfig profiles/common/tmux/.tmux.conf profiles/common/bash/workflow.bash profiles/darwin/Brewfile profiles/linux/packages.txt profiles/omarchy/packages.txt config/starship.toml config/atuin/config.toml config/broot/conf.hjson config/broot/verbs.hjson config/workstation/organization.md; do
+  for relative_path in AGENTS.md bin/refresh-system-map profiles/common/zsh/.zshenv profiles/common/zsh/.zprofile profiles/common/zsh/.profile profiles/common/zsh/.zshrc profiles/common/git/.gitconfig profiles/common/tmux/.tmux.conf profiles/common/bash/workflow.bash profiles/darwin/Brewfile profiles/linux/packages.txt profiles/omarchy/packages.txt config/starship.toml config/atuin/config.toml config/broot/conf.hjson config/broot/verbs.hjson config/workstation/organization.md config/workstation/principles.md config/workstation/git-workflow.md config/workstation/project-lifecycle.md config/workstation/machine-roles.md config/workstation/safety.md; do
     source_file="$ROOT/$relative_path"
     mkdir -p -- "$destination/${relative_path:h}"
     cp "$source_file" "$destination/$relative_path"
@@ -84,6 +84,7 @@ assert_missing "$test_home/.local/bin/node"
 grep -Fq '<!-- managed-by: dotfiles-system-map-v1 -->' "$test_home/.local/share/workstation/SYSTEM_MAP.md" || fail "missing system-map ownership marker"
 grep -Fq '## Organization policy' "$test_home/.local/share/workstation/SYSTEM_MAP.md" || fail "missing organization policy section"
 grep -Fq '### Project lifecycle' "$test_home/.local/share/workstation/SYSTEM_MAP.md" || fail "missing embedded organization-policy heading"
+grep -Fq '~/dotfiles/config/workstation/git-workflow.md' "$test_home/.local/share/workstation/SYSTEM_MAP.md" || fail "missing Git-workflow context source"
 if rg -q '^# Organization Policy$' "$test_home/.local/share/workstation/SYSTEM_MAP.md"; then
   fail "organization policy resets rendered Markdown heading hierarchy"
 fi

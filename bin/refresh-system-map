@@ -64,10 +64,22 @@ if [[ -z "$WORKTREE_ROOT" || "$DOTFILES_DIR" != "${WORKTREE_ROOT:A}" ]]; then
   print -u2 -- "${PROGRAM}: dotfiles source must be the Git worktree root: $DOTFILES_DIR"; exit 1
 fi
 
+typeset -a CONTEXT_SOURCE_RELATIVE_PATHS
+CONTEXT_SOURCE_RELATIVE_PATHS=(
+  config/workstation/organization.md
+  config/workstation/principles.md
+  config/workstation/git-workflow.md
+  config/workstation/project-lifecycle.md
+  config/workstation/machine-roles.md
+  config/workstation/safety.md
+)
+for context_relative_path in "${CONTEXT_SOURCE_RELATIVE_PATHS[@]}"; do
+  context_source="$DOTFILES_DIR/$context_relative_path"
+  if [[ ! -f "$context_source" || -L "$context_source" ]] || ! "$GIT_BIN" -C "$DOTFILES_DIR" ls-files --error-unmatch -- "$context_relative_path" >/dev/null 2>&1; then
+    print -u2 -- "${PROGRAM}: missing regular tracked context source: $context_source"; exit 1
+  fi
+done
 ORGANIZATION_POLICY="$DOTFILES_DIR/config/workstation/organization.md"
-if [[ ! -f "$ORGANIZATION_POLICY" || -L "$ORGANIZATION_POLICY" ]] || ! "$GIT_BIN" -C "$DOTFILES_DIR" ls-files --error-unmatch -- 'config/workstation/organization.md' >/dev/null 2>&1; then
-  print -u2 -- "${PROGRAM}: missing regular tracked organization policy: $ORGANIZATION_POLICY"; exit 1
-fi
 
 OUTPUT_DIR="$HOME/.local/share/workstation"
 OUTPUT_FILE="$OUTPUT_DIR/SYSTEM_MAP.md"
@@ -222,7 +234,7 @@ else
   publication_status="No direct origin configured; publication is intentionally unavailable."
 fi
 typeset -a helpers
-helpers=(install-core refresh-system-map)
+helpers=(install-core refresh-system-map new-agent-project)
 
 {
   print -- "$MANAGED_MARKER"
@@ -254,6 +266,13 @@ helpers=(install-core refresh-system-map)
   print '## Organization policy'
   print
   cat -- "$ORGANIZATION_POLICY"
+  print
+  print '## Context sources'
+  print
+  print -r -- '- Read only the source document relevant to the active task after this map.'
+  for context_relative_path in "${CONTEXT_SOURCE_RELATIVE_PATHS[@]}"; do
+    print -r -- "- ~/dotfiles/$context_relative_path"
+  done
   print
   print '## Working rules'
   print

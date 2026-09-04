@@ -96,11 +96,30 @@ context: machine profile, project placement policy, safe helper inventory,
 publication state, and core rules. It contains no credential values, host
 inventory, raw Tailnet state, or personal account data.
 
+The public policy sources live in `config/workstation/`: principles, Git
+workflow, project lifecycle, machine roles, organization policy, and safety.
+The generated map names these files so an agent can load only the relevant
+document for its current task.
+
 If a managed map needs a refresh:
 
 ```sh
 ~/dotfiles/bin/refresh-system-map --apply
 ```
+
+## Agent-owned project roots
+
+Agents can create new work through the dry-run-first helper without moving or
+classifying existing user content:
+
+```sh
+~/dotfiles/bin/new-agent-project --kind scratch --name browser-experiment
+~/dotfiles/bin/new-agent-project --kind project --area labs --name agent-console --apply
+```
+
+Scratch work is placed under `~/Projects/_scratch/YYYY-MM-topic`. Durable
+projects are placed under `~/Projects/<area>/<project>` and initialized as new
+Git repositories. Existing targets are always refused.
 
 ## Local extensions
 
