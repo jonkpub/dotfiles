@@ -47,3 +47,28 @@ unchanged; this bridge applies only to the default Hermes profile.
 This layer does not manage provider authentication, models, usage, routing,
 MCP configuration, memories, or credentials. Those remain outside the public
 dotfiles core.
+
+## Optional private Agentd integration
+
+When `~/Projects/labs/agentd` exists, read its `STATUS.md` for verified local
+capabilities and its `AGENTS.md` before changing the service. This private
+checkout is separate from public dotfiles; never copy its runtime state into
+this repository or the System Map.
+
+- Desktop controls: Agentd's island, window, and sidebar share the local
+  dashboard at `http://127.0.0.1:4176`. Linux can use the same local dashboard.
+- File organization: read `~/Projects/labs/agentd/docs/organization.md` before
+  proposing a move. Inventory is metadata-only; selected-file moves require a
+  preview, human confirmation, and an undo path. Repositories remain held.
+- Exchange: the dashboard catalogs declared packages and offers explicit
+  import/export. This is not permission to index personal iCloud or sync roots.
+- Provider continuation: read `~/Projects/labs/agentd/docs/handoff.md`. Reviewable
+  packets start a new session; they do not resume an existing native session.
+- Approvals and leases are local permission records, not OS enforcement.
+  Agents must not approve their own requests or treat emergency-mode records
+  as authority to retrieve personal credentials.
+
+Check service availability only when the task needs it. A missing or offline
+daemon must not prevent ordinary coding, reading the local map, or recovery.
+Never infer that an installed adapter guarantees the native agent has read
+context or participates in daemon authorization.

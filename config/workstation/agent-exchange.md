@@ -21,15 +21,17 @@ On Linux, the local staging root is private machine state:
 
 ```text
 ~/.local/share/workstation/agent-exchange/
-├── inbox/
-├── outbox/
-├── manifests/
+├── Inbox/
+├── Outbox/
+├── Manifests/
 └── README.md
 ```
 
 The Linux root is not an iCloud mount and must not claim to be synchronized.
-A future private file service may bridge declared Exchange items after explicit
-design and approval.
+The optional private Agentd service can transfer selected checksum packages
+over an explicitly configured Tailnet SSH connection. The Mac may import or
+export selected packages through Finder; neither operation proves iCloud
+upload completion. No background sync or personal-storage indexing is implied.
 
 ## Transfer contract
 
@@ -43,8 +45,9 @@ design and approval.
   and content classification without embedding secret values.
 - Before moving a durable item, preview the change, inspect Git/reference
   state, choose a recovery path, and obtain approval.
-- Deletion, replacement, conflict resolution, remote transfer, and automatic
-  synchronization are outside this initial foundation.
+- Deletion, replacement, conflict resolution, and automatic synchronization
+  are outside this policy. Any remote transfer requires a specifically selected
+  package and a configured destination, not blanket access to a source root.
 
 ## Machine roles
 

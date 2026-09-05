@@ -263,6 +263,9 @@ helpers=(install-core refresh-system-map new-agent-project agent-context agent-e
   print -r -- "- Publication: $publication_status"
   print -r -- "- Tailnet: $tailnet_status"
   print -r -- "- iCloud Agent Exchange: $exchange_status"
+  if [[ -f "$HOME/Projects/labs/agentd/STATUS.md" ]]; then
+    print -r -- '- Agentd: private checkout present at ~/Projects/labs/agentd; read STATUS.md for verified capabilities. Check localhost:4176 only when needed; checkout presence does not prove service health.'
+  fi
   print
   print '## File and project placement'
   print
